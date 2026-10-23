@@ -74,7 +74,8 @@ object VmManager {
             m.dir(ctx).mkdirs()
             val img = exec(bundle, run, listOf("qemu-img", "create", "-f", "qcow2", disk.path, "${m.diskGb}G"))
             val out = img.inputStream.bufferedReader().readText()
-            if (img.waitFor() != 0) throw IOException("не создать диск: $out")
+            val code = img.waitFor()
+            if (code != 0) throw IOException("не создать диск (${exitReason(code)}): $out")
         }
 
         writeDns(ctx, File(run, "r"))
@@ -110,12 +111,17 @@ object VmManager {
         audio = AudioBridge(run).also { it.start(micAllowed) }
     }
 
-    /** Команда из бандла через загрузчик musl: без proot и без chroot. */
+    /**
+     * Команда из бандла через загрузчик musl: без proot и без chroot.
+     * libnemu_sigsys не даёт фильтру seccomp Android молча убить процесс
+     * (см. native/sigsys).
+     */
     private fun exec(bundle: File, run: File, cmd: List<String>): Process {
         val b = bundle.path
         val full = listOf(
             "$b/lib/ld-musl-aarch64.so.1",
             "--library-path", "$b/usr/lib:$b/lib",
+            "--preload", "$b/usr/lib/libnemu_sigsys.so",
             "$b/usr/bin/${cmd[0]}",
         ) + cmd.drop(1)
         return ProcessBuilder(full)
@@ -226,8 +232,16 @@ object VmManager {
             _state.value = VmState.Idle
             ctx.stopService(Intent(ctx, VmService::class.java))
         } else {
-            fail(ctx, m, "QEMU завершился с кодом $code")
+            fail(ctx, m, "QEMU завершился: ${exitReason(code)}")
         }
+    }
+
+    /** Код выхода по-человечески: >128 — процесс убит сигналом. */
+    private fun exitReason(code: Int): String = when (code) {
+        128 + 9 -> "убит системой — скорее всего, не хватило памяти телефону"
+        128 + 11 -> "сбой памяти (SIGSEGV), код $code"
+        128 + 31 -> "Android запретил системный вызов (SIGSYS), код $code"
+        else -> if (code > 128) "убит сигналом ${code - 128}" else "код $code"
     }
 
     private fun fail(ctx: Context, m: Machine, message: String) {

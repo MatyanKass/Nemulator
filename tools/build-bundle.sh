@@ -27,6 +27,8 @@ apk --root "$ROOT" --initdb --no-scripts --no-cache \
 gcc -O2 -Wall -DPIC -shared -fPIC \
     -o "$ROOT/usr/lib/libasound_module_pcm_nemu.so" \
     "$HERE/native/alsa-nemu/pcm_nemu.c" -lasound -lpthread
+gcc -O2 -Wall -shared -fPIC \
+    -o "$ROOT/usr/lib/libnemu_sigsys.so" "$HERE/native/sigsys/nemu_sigsys.c"
 
 # libslirp (сеть QEMU) берёт DNS телефона из /etc/resolv.conf, а на Android
 # такого файла нет — интернет в Windows был бы без DNS. Подменяем путь на
@@ -47,7 +49,7 @@ mkdir -p "$B/lib" "$B/usr/bin" "$B/usr/lib/qemu" "$B/usr/share/qemu"
 cp -a "$ROOT"/lib/ld-musl-aarch64.so.1 "$B/lib/"
 cp -a "$ROOT"/lib/*.so* "$B/lib/" 2>/dev/null || true
 cp -a "$ROOT"/usr/lib/*.so* "$B/usr/lib/"
-cp -a "$ROOT"/usr/lib/libasound_module_pcm_nemu.so "$B/usr/lib/"
+cp -a "$ROOT"/usr/lib/libasound_module_pcm_nemu.so "$ROOT"/usr/lib/libnemu_sigsys.so "$B/usr/lib/"
 cp -a "$ROOT"/usr/lib/qemu/audio-alsa.so "$B/usr/lib/qemu/"
 cp -a "$ROOT"/usr/bin/qemu-system-x86_64 "$ROOT"/usr/bin/qemu-img "$B/usr/bin/"
 for f in bios-256k.bin bios.bin kvmvapic.bin linuxboot_dma.bin multiboot_dma.bin \
