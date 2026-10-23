@@ -88,7 +88,9 @@ object VmManager {
 
         _state.value = VmState.Starting(m, "Запускаю Windows…")
         synchronized(log) { log.clear() }
-        val p = exec(bundle, run, listOf("qemu-system-x86_64") + qemuArgs(ctx, m, run))
+        val args = qemuArgs(ctx, m, run)
+        openDiag(ctx, m, args)
+        val p = exec(bundle, run, listOf("qemu-system-x86_64") + args)
         process = p
         Thread({ pumpLog(ctx, p) }, "qemu-log").start()
         Thread({ watch(ctx, m, p) }, "qemu-wait").start()
@@ -100,6 +102,7 @@ object VmManager {
             }
 
             override fun onDisconnected(error: String?) {
+                diag("[nemulator] экран отключился: $error")
                 if (!stopRequested && p.isAlive) {
                     // Экран отвалился, а ПК жив — убиваем, иначе им не управлять.
                     p.destroy()
@@ -215,6 +218,7 @@ object VmManager {
             file.bufferedWriter().use { w ->
                 p.inputStream.bufferedReader().forEachLine { line ->
                     w.write(line); w.newLine(); w.flush()
+                    diag(line)
                     synchronized(log) {
                         log.addLast(line)
                         while (log.size > 80) log.removeFirst()
@@ -227,12 +231,48 @@ object VmManager {
     private fun watch(ctx: Context, m: Machine, p: Process) {
         val code = p.waitFor()
         Thread.sleep(300)  // дочитать хвост лога
+        diag("[nemulator] QEMU завершился: ${exitReason(code)}, stopRequested=$stopRequested")
         teardown()
         if (stopRequested || code == 0) {
             _state.value = VmState.Idle
             ctx.stopService(Intent(ctx, VmService::class.java))
         } else {
             fail(ctx, m, "QEMU завершился: ${exitReason(code)}")
+        }
+    }
+
+    // ---- лог для разбора проблем: /sdcard/Nemulator/qemu.log ----
+
+    @Volatile private var diagFile: java.io.Writer? = null
+
+    /**
+     * Копия лога в общую память телефона: из папки приложения её не достать
+     * ни пользователю, ни отладке через Termux. Предыдущий запуск остаётся
+     * рядом как qemu.prev.log.
+     */
+    private fun openDiag(ctx: Context, m: Machine, args: List<String>) {
+        runCatching { diagFile?.close() }
+        diagFile = runCatching {
+            @Suppress("DEPRECATION")
+            val dir = File(android.os.Environment.getExternalStorageDirectory(), "Nemulator").apply { mkdirs() }
+            val f = File(dir, "qemu.log")
+            if (f.exists()) f.renameTo(File(dir, "qemu.prev.log"))
+            f.bufferedWriter()
+        }.getOrNull()
+        val iso = File(m.isoPath)
+        diag("[nemulator] ${java.util.Date()} · Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}) · ${Build.MANUFACTURER} ${Build.MODEL}")
+        diag("[nemulator] ПК: ${m.toJson()}")
+        diag("[nemulator] ISO: ${m.isoPath} exists=${iso.exists()} canRead=${iso.canRead()} size=${iso.length()}")
+        diag("[nemulator] диск: ${m.disk(ctx).length()} байт")
+        diag("[nemulator] qemu " + args.joinToString(" "))
+    }
+
+    private fun diag(line: String) {
+        val w = diagFile ?: return
+        runCatching {
+            synchronized(w) {
+                w.write(line); w.write("\n"); w.flush()
+            }
         }
     }
 
@@ -245,6 +285,7 @@ object VmManager {
     }
 
     private fun fail(ctx: Context, m: Machine, message: String) {
+        diag("[nemulator] ОШИБКА: $message")
         teardown()
         runCatching { process?.destroy() }
         val tail = synchronized(log) { log.joinToString("\n") }
