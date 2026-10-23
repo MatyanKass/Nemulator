@@ -208,13 +208,19 @@ private fun Home(
     var machines by remember { mutableStateOf(Machines.list(ctx)) }
     var toDelete by remember { mutableStateOf<Machine?>(null) }
     var pendingStart by remember { mutableStateOf<Machine?>(null) }
+    var noIso by remember { mutableStateOf<Machine?>(null) }
 
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         pendingStart?.let { VmManager.start(ctx, it, granted) }
         pendingStart = null
     }
 
-    fun start(m: Machine) {
+    fun start(m: Machine, checked: Boolean = false) {
+        // Пустой диск и нет ISO — грузиться не с чего, BIOS скажет «No bootable device».
+        if (!checked && !File(m.isoPath).exists() && Machines.diskUsedBytes(ctx, m) < 64L * 1024 * 1024) {
+            noIso = m
+            return
+        }
         if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             VmManager.start(ctx, m, true)
         } else {
@@ -294,6 +300,17 @@ private fun Home(
         }
 
         PrimaryButton("+  Новый ПК", Modifier.fillMaxWidth()) { onEdit(defaultMachine(ctx), true) }
+    }
+
+    noIso?.let { m ->
+        Dialog(
+            title = "Не выбран ISO",
+            text = "Windows на этом ПК ещё не установлена, а установочного образа в приводе нет — " +
+                "ПК загрузится в пустой экран «No bootable device». Выбери ISO в «Настроить».",
+            confirm = "Всё равно запустить",
+            onConfirm = { noIso = null; start(m, checked = true) },
+            onDismiss = { noIso = null },
+        )
     }
 
     toDelete?.let { m ->

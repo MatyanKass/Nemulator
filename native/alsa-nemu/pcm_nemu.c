@@ -11,6 +11,7 @@
 // Часы — CLOCK_MONOTONIC: позиция «железа» считается от времени старта,
 // поэтому QEMU получает и отдаёт звук ровно в реальном темпе.
 
+#define _GNU_SOURCE
 #include <alsa/asoundlib.h>
 #include <alsa/pcm_external.h>
 #include <errno.h>
@@ -74,7 +75,8 @@ static void *serve(void *arg) {
     nemu_t *n = arg;
     unsigned char buf[4096];
     while (!n->stop) {
-        int fd = accept(n->listen_fd, NULL, NULL);
+        // accept4, а не accept: голый accept фильтр seccomp Android запрещает.
+        int fd = accept4(n->listen_fd, NULL, NULL, SOCK_CLOEXEC);
         if (fd < 0) {
             if (n->stop) break;
             usleep(100000);
