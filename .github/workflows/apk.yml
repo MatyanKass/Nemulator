@@ -1,0 +1,72 @@
+# Сборка APK. На телефоне её не сделать: в proot не стартует JVM.
+name: APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Ядро (QEMU для aarch64 + плагин звука) собирается в Alpine arm64 —
+      # раннер x86, поэтому через эмуляцию binfmt. Это пара минут.
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Ядро QEMU
+        run: |
+          docker run --rm --platform linux/arm64 -v "$PWD:/src" -w /src alpine:3.24 \
+            sh tools/build-bundle.sh app/src/main/assets/bundle.tar.xz
+          ls -la app/src/main/assets
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # Обёртки gradlew в репозитории нет (её jar не собрать без JVM),
+      # поэтому Gradle ставится сам.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.11.1
+
+      # Один и тот же ключ на все сборки — иначе новая версия не встанет
+      # поверх старой. Нет секрета — подпишется debug-ключом раннера.
+      - name: Ключ подписи
+        env:
+          KEYSTORE_B64: ${{ secrets.NEMU_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/nemu.p12"
+            echo "NEMU_KEYSTORE=$RUNNER_TEMP/nemu.p12" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Секрета NEMU_KEYSTORE_B64 нет — APK подписан временным ключом"
+          fi
+
+      - name: Собрать release
+        env:
+          NEMU_KEYSTORE_PASSWORD: ${{ secrets.NEMU_KEYSTORE_PASSWORD }}
+        run: gradle :app:assembleRelease --no-daemon --console=plain
+
+      # APK кладётся в релиз, а не в артефакты: у артефактов тесная квота.
+      - name: Выложить APK в релиз
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          apk=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          cp "$apk" Nemulator.apk
+          gh release delete apk-latest --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create apk-latest Nemulator.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Nemulator — последняя сборка" \
+            --notes "Собрано из $GITHUB_SHA. Перезаписывается каждой сборкой."

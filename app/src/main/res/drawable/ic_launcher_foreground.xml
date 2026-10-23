@@ -1,0 +1,21 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Монитор -->
+    <path
+        android:fillColor="#FF4C8DFF"
+        android:pathData="M30,34 h48 a4,4 0 0 1 4,4 v28 a4,4 0 0 1 -4,4 h-48 a4,4 0 0 1 -4,-4 v-28 a4,4 0 0 1 4,-4 z" />
+    <path
+        android:fillColor="#FF4C8DFF"
+        android:pathData="M48,70 h12 v6 h6 v4 h-24 v-4 h6 z" />
+    <!-- Буква N -->
+    <path
+        android:pathData="M43,61 L43,43 L65,61 L65,43"
+        android:strokeWidth="5"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+</vector>
