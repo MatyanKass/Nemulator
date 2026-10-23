@@ -2,9 +2,6 @@ package com.matyankass.nemulator
 
 import android.graphics.Rect
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -112,15 +109,12 @@ fun RunScreen(state: VmState, onMinimize: () -> Unit) {
                 }
             }
 
-            AnimatedVisibility(
-                hint && state is VmState.Running,
-                modifier = Modifier.align(Alignment.BottomStart).padding(start = 44.dp, bottom = 40.dp),
-                enter = fadeIn(), exit = fadeOut(),
-            ) {
+            if (hint && state is VmState.Running) {
                 Text(
                     "↗ Свайп из этого угла — меню",
                     color = Color.White,
-                    modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0xCC1B2230))
+                    modifier = Modifier.align(Alignment.BottomStart).padding(start = 44.dp, bottom = 40.dp)
+                        .clip(RoundedCornerShape(10.dp)).background(Color(0xCC1B2230))
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                 )
             }
